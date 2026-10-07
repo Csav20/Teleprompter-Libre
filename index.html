@@ -1,13 +1,15 @@
 <!DOCTYPE html>
-<html lang="">
+<html lang="es">
   <head>
     <meta charset="UTF-8">
-    <link rel="icon" href="/favicon.ico">
+    <link rel="icon" href="./favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>网页提词器</title>
+    <title>Teleprompter Libre</title>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <!-- Served by a plain static server (Live Server, double click), the .ts source cannot load: fall back to the
+         self-contained build. Vite replaces this tag on build, so the fallback never ships. -->
+    <script type="module" src="/src/main.ts" onerror="location.replace('./dist-offline/index.html' + location.search + location.hash)"></script>
   </body>
 </html>
