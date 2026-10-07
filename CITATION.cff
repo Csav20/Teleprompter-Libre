@@ -1,0 +1,40 @@
+# Only humans are listed as authors (COPE, ICMJE). AI use is disclosed in USO-DE-IA.md.
+cff-version: 1.2.0
+message: >-
+  Si usas este software, cítalo con estos metadatos. Fue desarrollado con asistencia
+  de Claude Code (Anthropic, modelo Claude Opus 5.5); ver USO-DE-IA.md.
+type: software
+title: Teleprompter Libre
+abstract: >-
+  Teleprompter web libre: velocidad fija, seguimiento por voz, segunda pantalla,
+  control por teclado o puntero y asistente IA (Claude) con API key propia.
+  Fork de zhang-brook/web-teleprompter.
+authors:
+  - family-names: Abarca Vargas
+    given-names: Claudio
+    email: csav20@gmail.com
+  - family-names: Zhang
+    given-names: Brook
+version: 0.1.0
+date-released: 2026-10-07
+license: MIT
+repository-code: https://github.com/Csav20/Teleprompter-Libre
+keywords:
+  - teleprompter
+  - reconocimiento de voz
+  - vue
+references:
+  - type: software
+    title: web-teleprompter
+    authors:
+      - family-names: Zhang
+        given-names: Brook
+    repository-code: https://github.com/zhang-brook/web-teleprompter
+    license: MIT
+  - type: software
+    title: Claude Code
+    authors:
+      - name: Anthropic
+    version: Claude Opus 5.5
+    url: https://claude.com/claude-code
+    notes: Herramienta de IA usada en el desarrollo; no es autora (ver USO-DE-IA.md).

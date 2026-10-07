@@ -153,4 +153,7 @@ lo cobra Anthropic en tu cuenta, según el largo del guion.
 
 - Proyecto original: [web-teleprompter](https://github.com/zhang-brook/web-teleprompter) de Brook Zhang (MIT).
 - Fork: Claudio Abarca Vargas.
+- Desarrollado con asistencia de Claude Code (Anthropic, modelo Claude Opus 5.5). La IA no figura como
+  autora; su uso se declara en [USO-DE-IA.md](USO-DE-IA.md), junto con cómo citarla (APA, MLA, Chicago).
+- Para citar este software, usa [CITATION.cff](CITATION.cff) o el botón **Cite this repository** de GitHub.
 - Licencia MIT; ver [LICENSE](LICENSE).
