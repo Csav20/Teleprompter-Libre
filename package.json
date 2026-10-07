@@ -1,6 +1,6 @@
 {
-  "name": "web-teleprompter",
-  "version": "0.0.0",
+  "name": "teleprompter-libre",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,9 +8,12 @@
     "build": "run-p type-check \"build-only {@}\" --",
     "preview": "vite preview",
     "build-only": "vite build",
-    "type-check": "vue-tsc --build"
+    "type-check": "vue-tsc --build",
+    "build:offline": "vite build --mode offline"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
+    "mammoth": "^1.13.0",
     "vue": "^3.5.38"
   },
   "devDependencies": {
@@ -21,10 +24,13 @@
     "npm-run-all2": "^9.0.2",
     "typescript": "~6.0.0",
     "vite": "^8.0.16",
+    "vite-plugin-singlefile": "^2.3.3",
     "vite-plugin-vue-devtools": "^8.1.2",
     "vue-tsc": "^3.3.5"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
-  }
+  },
+  "description": "Teleprompter web libre: velocidad fija, seguimiento por voz, segunda pantalla, control por teclado/clicker y asistente IA (Claude) con tu propia API key. Fork de zhang-brook/web-teleprompter.",
+  "license": "MIT"
 }

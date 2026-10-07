@@ -14,7 +14,12 @@ export const recLangs: RecLang[] = [
   { value: 'ko-KR', label: '한국어' },
   { value: 'fr-FR', label: 'Français' },
   { value: 'de-DE', label: 'Deutsch' },
-  { value: 'es-ES', label: 'Español' },
+  { value: 'es-ES', label: 'Español (España)' },
+  { value: 'es-MX', label: 'Español (México)' },
+  { value: 'es-CL', label: 'Español (Chile)' },
+  { value: 'es-AR', label: 'Español (Argentina)' },
+  { value: 'pt-BR', label: 'Português (Brasil)' },
+  { value: 'it-IT', label: 'Italiano' },
   { value: 'ru-RU', label: 'Русский' },
 ]
 
@@ -36,6 +41,11 @@ export const recLangFamily: Record<string, ScriptFamily> = {
   'fr-FR': 'latin',
   'de-DE': 'latin',
   'es-ES': 'latin',
+  'es-MX': 'latin',
+  'es-CL': 'latin',
+  'es-AR': 'latin',
+  'pt-BR': 'latin',
+  'it-IT': 'latin',
   'ru-RU': 'cyrillic',
 }
 
@@ -49,4 +59,13 @@ export function recLangFamilyOf(value: string): ScriptFamily {
 
 export function isKnownRecLang(value: string): boolean {
   return recLangs.some((l) => l.value === value)
+}
+
+// Default recognition language derived from the browser language (exact tag first, then same base language).
+export function defaultRecLang(): string {
+  const nav = typeof navigator !== 'undefined' ? navigator.language : 'en-US'
+  const exact = recLangs.find((l) => l.value.toLowerCase() === nav.toLowerCase())
+  if (exact) return exact.value
+  const base = nav.split('-')[0]!.toLowerCase()
+  return recLangs.find((l) => l.value.toLowerCase().startsWith(base + '-'))?.value ?? 'en-US'
 }

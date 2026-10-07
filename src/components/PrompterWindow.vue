@@ -2,8 +2,11 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { state, transformStyle, displayScript } from '../store'
 import { t } from '../i18n'
+import { cueMask } from '../utils/cues'
+import { role, remotePos, publishPos, nav } from '../sync'
 
 const emit = defineEmits<{ (e: 'stop'): void }>()
+const isDisplay = role === 'display'
 
 const rootRef = ref<HTMLElement | null>(null)
 const viewportRef = ref<HTMLElement | null>(null)
@@ -26,7 +29,7 @@ const pwStyle = computed(() => {
   }
   return { left: '0', top: '0', width: '100%', height: '100%' }
 })
-const pwClass = computed(() => 'pw mode-' + state.windowMode)
+const pwClass = computed(() => 'pw mode-' + state.windowMode + (isDisplay ? ' bare' : ''))
 
 // Root container: in screen / screen-float mode it acts as the fullscreen background layer and the request target for real fullscreen;
 // 根容器：screen / screen-float 模式下作为全屏背景层并作为真实全屏请求目标；
@@ -43,7 +46,9 @@ const rootStyle = computed(() => {
   return {}
 })
 
-const chars = ref<{ i: number; c: string }[]>([])
+const chars = ref<{ i: number; c: string; cue: boolean }[]>([])
+// Indices of the first character of each paragraph (targets for next/prev jumps).
+let paraStarts: number[] = []
 
 // Scroll state.
 // 滚动状态
@@ -91,7 +96,13 @@ function relaxedBounds() {
 watch(
   () => displayScript.value,
   (val) => {
-    chars.value = Array.from(val).map((c, i) => ({ i, c }))
+    const cps = Array.from(val)
+    const cue = cueMask(cps)
+    chars.value = cps.map((c, i) => ({ i, c, cue: cue[i]! }))
+    paraStarts = []
+    for (let i = 0; i < cps.length; i++) {
+      if (cps[i] !== '\n' && (i === 0 || cps[i - 1] === '\n')) paraStarts.push(i)
+    }
     nextTick(collectSpans)
   },
   { immediate: true, flush: 'post' },
@@ -190,6 +201,42 @@ watch(
   },
 )
 
+// ===== Paragraph jumps (keyboard, presentation clicker, external commands) =====
+// Next: the first paragraph below the read line. Prev: the start of the current paragraph, or the
+// previous one when already at its start. In speech mode the matcher is moved there too, so voice
+// following resumes from the new place.
+watch(
+  () => nav.seq,
+  () => {
+    const vp = viewportRef.value
+    if (isDisplay || !vp || !paraStarts.length) return
+    const lineY = vp.clientHeight * state.readLine
+    const total = autoScroll.value + userOffsetTarget.value
+    const cur = total + lineY
+    const tops = paraStarts.map((i) => spans.value[i]?.offsetTop ?? 0)
+    // A jump centres the paragraph's first line on the read line, so "already at its start" means its
+    // top is within one line above the read line.
+    const lineH = spans.value[paraStarts[0]!]?.offsetHeight || state.fontSize * state.lineHeight
+    let k = -1
+    if (nav.dir > 0) k = tops.findIndex((top) => top > cur + 4)
+    else for (let j = tops.length - 1; j >= 0; j--) if (tops[j]! < cur - lineH) { k = j; break }
+    if (k < 0) return
+    const target = paraStarts[k]!
+    const el = spans.value[target]!
+    if (state.mode === 'speech' && state.running) {
+      const o2n = state.normInfo.origToNorm
+      let n = target
+      while (n < o2n.length && (o2n[n] ?? -1) < 0) n++
+      const norm = o2n[n] ?? state.normInfo.norm.length
+      state.matchedNorm = norm
+      state.liveNorm = norm
+    } else {
+      userOffsetTarget.value += el.offsetTop + el.offsetHeight / 2 - cur
+      clampOffsetTarget()
+    }
+  },
+)
+
 // ===== Animation loop =====
 // ===== 动画循环 =====
 let raf = 0
@@ -201,7 +248,14 @@ function tick(now: number) {
   const { min, max } = scrollBounds()
   const vh = viewportRef.value?.clientHeight ?? 1
 
-  if (state.running && !state.paused) {
+  if (isDisplay) {
+    // Display window: follow the control window's read position, scaled to this window's own layout.
+    const el = spans.value[remotePos.idx]
+    if (el) {
+      const target = el.offsetTop + remotePos.frac * el.offsetHeight - vh * state.readLine
+      autoScroll.value += (target - autoScroll.value) * (1 - Math.exp(-dt / 90))
+    }
+  } else if (state.running && !state.paused) {
     if (state.mode === 'fixed') {
       autoScroll.value += (state.speed * dt) / 1000
     } else {
@@ -236,15 +290,24 @@ function tick(now: number) {
 
   // Highlight the current position.
   // 高亮当前位置
+  const lineY = total + vh * state.readLine
+  const lineIdx = charIndexAt(lineY)
   let idx: number
-  if (state.mode === 'speech') {
+  if (isDisplay) {
+    idx = remotePos.idx
+  } else if (state.mode === 'speech') {
     const ni = Math.min(state.liveNorm, state.normInfo.normToOrig.length - 1)
     idx = state.normInfo.normToOrig[Math.max(0, ni)] ?? 0
   } else {
-    const lineY = vh * state.readLine
-    idx = charIndexAt(total + lineY)
+    idx = lineIdx
   }
   applyHighlight(idx)
+
+  if (!isDisplay) {
+    const el = spans.value[lineIdx]
+    const frac = el && el.offsetHeight ? Math.max(0, Math.min(1, (lineY - el.offsetTop) / el.offsetHeight)) : 0
+    publishPos(lineIdx, frac)
+  }
 
   raf = requestAnimationFrame(tick)
 }
@@ -469,7 +532,7 @@ function stop() {
             wordBreak: state.breakWords ? 'break-all' : 'normal',
           }"
         >
-          <span v-for="ch in chars" :key="ch.i" :data-i="ch.i">{{ ch.c }}</span>
+          <span v-for="ch in chars" :key="ch.i" :data-i="ch.i" :class="{ cue: ch.cue }">{{ ch.c }}</span>
         </div>
         <div
           class="pw-readline"
@@ -573,6 +636,16 @@ function stop() {
   background: rgba(255, 213, 79, 0.35);
   border-radius: 3px;
   opacity: 1;
+}
+/* [Cues]: stage directions that are not read aloud. */
+.pw-content span.cue {
+  color: #ffb74d;
+  font-style: italic;
+  font-size: 0.7em;
+  opacity: 0.85;
+}
+.pw.bare .pw-header {
+  display: none;
 }
 .pw-interim {
   position: absolute;

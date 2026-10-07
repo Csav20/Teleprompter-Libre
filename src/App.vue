@@ -2,13 +2,16 @@
 import { ref, watch, computed } from 'vue'
 import ControlPanel from './components/ControlPanel.vue'
 import PrompterWindow from './components/PrompterWindow.vue'
-import { state, initPersist, initTheme, rebuildNorm } from './store'
+import { state, initPersist, loadPersisted, initTheme, rebuildNorm } from './store'
+import { role, initSync, requestJump, openDisplay, syncAvailable, type Command } from './sync'
+import { readScriptFile, isSupportedFile } from './utils/importers'
 import { useSpeechRecognition } from './composables/useSpeechRecognition'
 import { normalizeText, alignForward } from './utils/match'
 import { checkSpeechLanguage, type SpeechLangCheck } from './utils/langDetect'
 import { recLangLabel } from './utils/recLangs'
 import { t } from './i18n'
 import LocaleSwitcher from './components/LocaleSwitcher.vue'
+import logoUrl from './assets/logo.svg'
 
 const speech = useSpeechRecognition()
 const showPanel = ref(typeof window !== 'undefined' ? window.innerWidth >= 768 : true)
@@ -50,8 +53,93 @@ const langCheckInfo = computed(() => {
   }
 })
 
-initPersist()
+const isDisplay = role === 'display'
+// A display window reads the saved config once but never writes it back (it would overwrite the control window's settings).
+if (isDisplay) loadPersisted()
+else initPersist()
 initTheme()
+initSync(runCommand)
+
+function flash(msg: string, ms = 3000) {
+  toast.value = msg
+  setTimeout(() => (toast.value = ''), ms)
+}
+
+// ===== Commands: keyboard, presentation clickers and external control (see sync.ts) =====
+function runCommand(cmd: Command) {
+  switch (cmd) {
+    case 'start':
+      if (!state.running) start()
+      else state.paused = false
+      break
+    case 'stop':
+      if (state.running) stop()
+      break
+    case 'pause':
+      if (state.running) state.paused = !state.paused
+      else start()
+      break
+    case 'next':
+      requestJump(1)
+      break
+    case 'prev':
+      requestJump(-1)
+      break
+    case 'faster':
+      state.speed = Math.min(400, state.speed + 10)
+      flash(t('panel.speed', { value: state.speed }), 1200)
+      break
+    case 'slower':
+      state.speed = Math.max(10, state.speed - 10)
+      flash(t('panel.speed', { value: state.speed }), 1200)
+      break
+    case 'bigger':
+      state.fontSize = Math.min(120, state.fontSize + 4)
+      break
+    case 'smaller':
+      state.fontSize = Math.max(16, state.fontSize - 4)
+      break
+    case 'mirror':
+      state.flipH = !state.flipH
+      break
+  }
+}
+
+// Keys: Space start/pause · Esc stop · PageDown/→ next paragraph · PageUp/← previous ·
+// ↑/↓ speed · +/− font size · M mirror. Presentation clickers send PageUp/PageDown or arrows.
+// A display window only handles its own look (font size, mirror, fullscreen).
+const KEYMAP: Record<string, Command> = {
+  ' ': 'pause',
+  Escape: 'stop',
+  PageDown: 'next',
+  ArrowRight: 'next',
+  PageUp: 'prev',
+  ArrowLeft: 'prev',
+  ArrowUp: 'faster',
+  ArrowDown: 'slower',
+  '+': 'bigger',
+  '=': 'bigger',
+  '-': 'smaller',
+  m: 'mirror',
+  M: 'mirror',
+}
+const DISPLAY_KEYS: Command[] = ['bigger', 'smaller', 'mirror']
+
+function onKey(e: KeyboardEvent) {
+  const el = e.target as HTMLElement | null
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+  if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName))) return
+  if (isDisplay && (e.key === 'f' || e.key === 'F')) {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    else document.documentElement.requestFullscreen().catch(() => {})
+    return
+  }
+  const cmd = KEYMAP[e.key]
+  if (!cmd || (isDisplay && !DISPLAY_KEYS.includes(cmd))) return
+  e.preventDefault()
+  runCommand(cmd)
+}
+window.addEventListener('keydown', onKey)
 
 watch(speech.interimText, (v) => {
   state.interimText = v
@@ -183,10 +271,6 @@ function stop() {
 // ===== 拖入 txt 文档导入文稿 =====
 const isDragging = ref(false)
 
-function isTextFile(f: File): boolean {
-  return f.type.startsWith('text/') || /\.txt$/i.test(f.name)
-}
-
 function onDragOver(e: DragEvent) {
   const dt = e.dataTransfer
   if (dt && Array.from(dt.items).some((it) => it.kind === 'file')) {
@@ -204,36 +288,42 @@ function onDrop(e: DragEvent) {
   isDragging.value = false
   const file = e.dataTransfer?.files?.[0]
   if (!file) return
-  if (!isTextFile(file)) {
-    toast.value = t('toast.onlyTxt')
-    setTimeout(() => (toast.value = ''), 3000)
+  if (!isSupportedFile(file) && !/\.docx$/i.test(file.name)) {
+    flash(t('toast.onlyTxt'))
     return
   }
-  const reader = new FileReader()
-  reader.onload = () => {
-    state.script = String(reader.result ?? '')
-    rebuildNorm()
-    toast.value = t('toast.importedFrom', { name: file.name })
-    setTimeout(() => (toast.value = ''), 3000)
-  }
-  reader.onerror = () => {
-    toast.value = t('toast.readFailed')
-    setTimeout(() => (toast.value = ''), 3000)
-  }
-  reader.readAsText(file)
+  readScriptFile(file)
+    .then((text) => {
+      state.script = text
+      rebuildNorm()
+      flash(t('toast.importedFrom', { name: file.name }))
+    })
+    .catch(() => flash(t('toast.readFailed')))
 }
 </script>
 
 <template>
-  <div class="app" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
+  <!-- Display window (?pantalla): prompter only, driven by the control window. -->
+  <div v-if="isDisplay" class="app display">
+    <main class="stage">
+      <PrompterWindow />
+      <div v-if="!state.script" class="display-wait">{{ t('display.waiting') }}</div>
+      <div class="display-keys">{{ t('display.keys') }}</div>
+    </main>
+  </div>
+
+  <div v-else class="app" @dragover="onDragOver" @dragleave="onDragLeave" @drop="onDrop">
     <header class="topbar">
       <div class="brand">
-        <img class="brand-logo" src="/logo.svg" alt="Logo" />
+        <img class="brand-logo" :src="logoUrl" alt="Logo" />
         <span>{{ t('app.name') }}</span>
       </div>
       <div class="actions">
         <button class="primary" @click="start" :disabled="state.running">{{ t('action.start') }}</button>
         <button @click="stop" :disabled="!state.running">{{ t('action.stop') }}</button>
+        <button v-if="syncAvailable" class="ghost" @click="openDisplay" :title="t('panel.displayHint')">
+          {{ t('action.display') }}
+        </button>
         <LocaleSwitcher />
         <button class="ghost" @click="showPanel = !showPanel">
           {{ showPanel ? t('action.hideSettings') : t('action.settings') }}
@@ -385,6 +475,32 @@ function onDrop(e: DragEvent) {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+}
+.app.display .stage {
+  height: 100vh;
+}
+.display-wait {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 15px;
+  pointer-events: none;
+}
+.display-keys {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  font-size: 12px;
+  color: #777;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.app.display:hover .display-keys {
+  opacity: 1;
 }
 .toast {
   position: absolute;

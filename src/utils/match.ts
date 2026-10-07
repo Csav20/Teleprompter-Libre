@@ -5,6 +5,8 @@
 // tolerating pauses (silence) and rephrasings (different wording).
 // 处理气口（静音）与换种表述（措辞不同）的情况
 
+import { cueMask } from './cues'
+
 const PUNCT_RE = /[\s\p{P}\p{S}]/u
 
 function isSkippable(ch: string): boolean {
@@ -27,9 +29,11 @@ export function buildNorm(text: string): NormInfo {
   const normToOrig: number[] = []
   const origToNorm: number[] = new Array(text.length).fill(-1)
   let norm = ''
+  // [Cues] are never spoken, so they are left out of the text the speech aligner matches against.
+  const cue = cueMask(text)
   for (let i = 0; i < text.length; i++) {
     const ch = text[i]!
-    if (isSkippable(ch)) continue
+    if (isSkippable(ch) || cue[i]) continue
     origToNorm[i] = norm.length
     normToOrig.push(i)
     norm += ch.toLowerCase()

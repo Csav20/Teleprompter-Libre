@@ -1,7 +1,28 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
-import { state, rebuildNorm, exportConfig, importConfig, resetConfig } from '../store'
+import { state, rebuildNorm, exportConfig, importConfig, resetConfig, scriptStats } from '../store'
 import { t } from '../i18n'
+import { ACCEPT, readScriptFile } from '../utils/importers'
+import { formatDuration } from '../utils/cues'
+import { openDisplay, syncAvailable } from '../sync'
+import AiPanel from './AiPanel.vue'
+
+const scriptInput = ref<HTMLInputElement | null>(null)
+const msgScript = ref('')
+async function onScriptFile(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    state.script = await readScriptFile(file)
+    rebuildNorm()
+    msgScript.value = t('toast.importedFrom', { name: file.name })
+  } catch {
+    msgScript.value = t('toast.readFailed')
+  }
+  setTimeout(() => (msgScript.value = ''), 3000)
+}
 import { recLangs, isKnownRecLang } from '../utils/recLangs'
 
 const fonts = [
@@ -87,6 +108,29 @@ function onImportFile(e: Event) {
         :placeholder="t('panel.scriptPlaceholder')"
       ></textarea>
       <p class="hint">{{ t('panel.scriptHint') }}</p>
+      <button class="wide" style="margin-top: 8px" @click="scriptInput?.click()">{{ t('panel.openFile') }}</button>
+      <input ref="scriptInput" type="file" :accept="ACCEPT" style="display: none" @change="onScriptFile" />
+      <p v-if="msgScript" class="hint">{{ msgScript }}</p>
+      <p class="hint">{{ t('panel.cuesHint') }}</p>
+      <div class="field">
+        <label>{{ t('panel.wpm', { value: state.wpm }) }}</label>
+        <input type="range" min="80" max="220" step="5" v-model.number="state.wpm" />
+      </div>
+      <p class="hint stats">
+        {{ t('panel.stats', { words: scriptStats.words, time: formatDuration(scriptStats.seconds) }) }}
+      </p>
+    </section>
+
+    <section class="sec">
+      <h3>{{ t('panel.ai') }}</h3>
+      <AiPanel />
+    </section>
+
+    <section class="sec">
+      <h3>{{ t('panel.display') }}</h3>
+      <button class="wide" :disabled="!syncAvailable" @click="openDisplay">{{ t('panel.openDisplay') }}</button>
+      <p class="hint">{{ t('panel.displayHint') }}</p>
+      <p class="hint">{{ t('panel.keysHint') }}</p>
     </section>
 
     <section class="sec">

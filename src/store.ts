@@ -1,5 +1,7 @@
 import { reactive, watch, computed } from 'vue'
 import { buildNorm } from './utils/match'
+import { isKnownRecLang, defaultRecLang } from './utils/recLangs'
+import { countWords } from './utils/cues'
 
 export type Mode = 'fixed' | 'speech'
 
@@ -42,7 +44,10 @@ function makeDefaults() {
 
     // Speech recognition language (BCP-47, e.g. zh-CN / en-US).
     // 语音识别语言（BCP-47，如 zh-CN / en-US）
-    recLang: 'zh-CN',
+    recLang: defaultRecLang(),
+
+    // Reading speed used to estimate script duration (words per minute).
+    wpm: 140,
 
     // Running / paused.
     // 运行 / 暂停
@@ -130,6 +135,7 @@ export const usable: (keyof typeof state)[] = [
   'script',
   'mode',
   'recLang',
+  'wpm',
   'speed',
   'wheelStep',
   'fontSize',
@@ -190,11 +196,10 @@ export function applyConfig(cfg: Partial<AppConfig>) {
         const r = cfg[k] as unknown as number
         state.readLine = Math.max(0.05, Math.min(0.95, r > 1 ? r / 100 : r))
       } else if (k === 'recLang') {
-        // Speech recognition language: only accept known BCP-47 tags; fall back to default zh-CN for illegal values.
-        // 语音识别语言：仅接受已知的 BCP-47 标签，非法值回退到默认 zh-CN
+        // Speech recognition language: only accept known BCP-47 tags; fall back to the browser-derived default for illegal values.
+        // 语音识别语言：仅接受已知的 BCP-47 标签，非法值回退到按浏览器语言推导的默认值
         const v = cfg[k] as unknown as string
-        const KNOWN = ['zh-CN', 'zh-TW', 'en-US', 'en-GB', 'ja-JP', 'ko-KR', 'fr-FR', 'de-DE', 'es-ES', 'ru-RU']
-        state.recLang = KNOWN.includes(v) ? v : 'zh-CN'
+        state.recLang = isKnownRecLang(v) ? v : defaultRecLang()
       } else {
         // @ts-expect-error dynamic assignment / 动态赋值
         state[k] = cfg[k]
@@ -288,6 +293,12 @@ export function collapseBlankLines(text: string): string {
 export const displayScript = computed(() =>
   state.removeBlankLines ? collapseBlankLines(state.script) : state.script,
 )
+
+// Spoken words (cues excluded) and the estimated reading time at the configured words per minute.
+export const scriptStats = computed(() => {
+  const words = countWords(displayScript.value)
+  return { words, seconds: (words / Math.max(40, state.wpm || 140)) * 60 }
+})
 
 // Rebuild the normalized info and reset the match progress when the script changes.
 // 脚本变化时重建归一化信息并重置匹配进度

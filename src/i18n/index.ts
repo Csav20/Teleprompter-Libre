@@ -2,8 +2,9 @@ import { reactive } from 'vue'
 import zhCN from './zh-CN.json'
 import zhTW from './zh-TW.json'
 import en from './en.json'
+import es from './es.json'
 
-export type Locale = 'zh-CN' | 'zh-TW' | 'en'
+export type Locale = 'es' | 'en' | 'zh-CN' | 'zh-TW'
 
 export interface LocaleMeta {
   code: Locale
@@ -13,6 +14,7 @@ export interface LocaleMeta {
 // Language names shown in the language switcher, written in their native form by convention (not translated with the UI locale).
 // 语言选择器里显示的语言名，按惯例用其原生写法（不随界面语言翻译）。
 export const locales: LocaleMeta[] = [
+  { code: 'es', label: 'Español' },
   { code: 'zh-CN', label: '简体中文' },
   { code: 'zh-TW', label: '繁體中文' },
   { code: 'en', label: 'English' },
@@ -24,6 +26,7 @@ const tables: Record<Locale, Dict> = {
   'zh-CN': zhCN as Dict,
   'zh-TW': zhTW as Dict,
   en: en as Dict,
+  es: es as Dict,
 }
 
 const STORAGE_KEY = 'web-teleprompter-locale'
@@ -31,7 +34,7 @@ const STORAGE_KEY = 'web-teleprompter-locale'
 function detectLocale(): Locale {
   try {
     const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved === 'zh-CN' || saved === 'zh-TW' || saved === 'en') return saved
+    if (saved === 'zh-CN' || saved === 'zh-TW' || saved === 'en' || saved === 'es') return saved
   } catch {
     /* ignore read failure / 忽略读取失败 */
   }
@@ -41,6 +44,7 @@ function detectLocale(): Locale {
     return l.includes('tw') || l.includes('hk') || l.includes('mo') ? 'zh-TW' : 'zh-CN'
   }
   if (l.startsWith('en')) return 'en'
+  if (l.startsWith('es')) return 'es'
   return 'en'
 }
 
